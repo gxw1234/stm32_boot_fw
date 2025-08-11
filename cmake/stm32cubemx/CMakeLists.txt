@@ -98,6 +98,8 @@ target_sources(stm32cubemx INTERFACE
     ../../Core/Src/pc_to_stm_command_handler/handler_reset_usb3300_stm32.c
     ../../Core/Src/pc_to_stm_command_handler/handler_gpio.c
     ../../Drivers/STM32H7xx_HAL_Driver/Src/stm32h7xx_hal_qspi.c
+    ../../Core/Src/boot_mode.c
+    
 )
 
 target_link_directories(stm32cubemx INTERFACE

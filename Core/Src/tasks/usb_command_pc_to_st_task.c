@@ -1,10 +1,14 @@
 #include "tasks/usb_command_pc_to_st_task.h"
+#include "usb_device.h"
 #include "usbd_cdc_if.h"
-#include <stdio.h>
-#include <string.h>
+#include "FreeRTOS.h"
+#include "task.h"
+#include "queue.h"
 #include "pc_to_stm_command_handler/command_handler.h"
-#include "FreeRTOS.h"  
-
+#include <string.h>
+#include "init/gd25qxx.h"
+#include "boot_mode.h"
+#include "pc_to_stm_command_handler/handler_reset_usb3300_stm32.h"
 
 #define CMD_END_MARKER      0xA5A5A5A5
 #define FRAME_START_MARKER  0x5A5A5A5A 
@@ -27,8 +31,12 @@ static uint32_t expected_total_length = 0;  // 期望的总数据长度
 static uint32_t received_length = 0;        // 已接收的数据长度
 static uint32_t frame_type = 0;             // 帧类型
 static uint32_t cmd_id = 0;                 // 命令ID
-static uint8_t is_queue_write_cmd = 0;      // 是否为CMD_QUEUE_WRITE命令
+static uint8_t is_boot_write_cmd = 0;      // 是否为BOOTLOADER_WRITE_BYTES命令
 static int8_t image_buffer_index = -1;      // 图像缓冲区索引
+
+// QSPI Flash地址管理
+#define QSPI_FIRMWARE_START_ADDR    0x020000    // 固件起始地址 (128KB偏移)
+static uint32_t qspi_current_addr = QSPI_FIRMWARE_START_ADDR;  // 当前写入地址
 QueueHandle_t usbMessageQueueHandle = NULL;
 
 
@@ -53,7 +61,7 @@ static void send_queue_write_response(uint8_t status)
 void usb_command_pc_to_st_task(void *argument)
 {
     memset(big_buffer, 0, BIG_BUFFER_SIZE);
-    usbMessageQueueHandle = xQueueCreate(100, sizeof(USB_Data_TypeDef));
+    usbMessageQueueHandle = xQueueCreate(10, sizeof(USB_Data_TypeDef));
     if (usbMessageQueueHandle == NULL) {
         printf(" Queue create failed!\r\n");
         vTaskDelete(NULL);
@@ -82,13 +90,65 @@ void usb_command_pc_to_st_task(void *argument)
                             memcpy(&total_packets, usbData.Buf + 10, 2);         
                             frame_type = protocol_type;
                             cmd_id = cmd_id_byte;
-                            expected_total_length = 4 + total_packets + 4;       // 帧头 + 数据 + 帧尾
-                            memcpy(big_buffer, usbData.Buf, usbData.Length);
+                            expected_total_length = 4 + total_packets + 4;      
+                            
                             received_length = usbData.Length;
                             if (received_length >= expected_total_length) {
-                
-                                uint32_t cmd_length = received_length - 8; 
-                                Process_Command(big_buffer + 4, &cmd_length); 
+                                switch (protocol_type) {
+                                    case PROTOCOL_BOOTLOADER_WRITE_BYTES:
+                                        switch (cmd_id_byte) {
+                                            case BOOTLOADER_START_WRITE:
+                                                qspi_current_addr = QSPI_FIRMWARE_START_ADDR;
+                                                printf("Bootloader start write, reset QSPI address to 0x%08lX\n", qspi_current_addr);
+                                                break;
+                                            case BOOTLOADER_WRITE_BYTES:
+                                                qspi_current_addr = QSPI_FIRMWARE_START_ADDR; 
+                                                uint32_t data_offset = 12;  
+                                                uint32_t data_length = usbData.Length - data_offset;
+                                                if (received_length >= expected_total_length) {
+                                                    data_length -= 4;  
+                                                }
+                                                if (data_length > 0) {
+                                                    GD25QXX_WriteBytes(qspi_current_addr, usbData.Buf + data_offset, data_length);
+                                                    qspi_current_addr += data_length;  // 更新地址
+                                                    send_queue_write_response(0);
+                                                }
+                                                is_boot_write_cmd = 1;
+                                                break;
+                                            case BOOTLOADER_SWITCH_RUN:
+                                                // 切换到RUN模式
+                                                Boot_Mode_Set(BOOT_MODE_APPLICATION);
+                                                printf("Boot mode switched to APPLICATION\n");
+                                                break;
+                                            case BOOTLOADER_SWITCH_BOOT:
+                                                // 切换到BOOT模式
+                                                Boot_Mode_Set(BOOT_MODE_BOOTLOADER);
+                                                printf("Boot mode switched to BOOTLOADER\n");
+                                                break;
+                                            case BOOTLOADER_RESET:
+                                                // 复位命令
+                                                printf("Received reset command, resetting system...\n");
+                                                handler_reset_usb3300_stm32();
+                                                break;
+                                            default:
+                                                memcpy(big_buffer, usbData.Buf, usbData.Length);
+                                                uint32_t cmd_length = received_length - 8; 
+                                                Process_Command(big_buffer + 4, &cmd_length);
+                                                is_boot_write_cmd = 0;
+                                                break;
+                                        }
+                                        break;
+                                    default:
+                                        memcpy(big_buffer, usbData.Buf, usbData.Length);
+                                        uint32_t cmd_length = received_length - 8; 
+                                        Process_Command(big_buffer + 4, &cmd_length);
+                                        is_boot_write_cmd = 0;
+                                        break;
+                                }
+
+                                frame_state = WAITING_FOR_HEADER;
+                                received_length = 0;
+                                is_boot_write_cmd = 0;
                             } else {
                                 frame_state = RECEIVING_DATA;
                             }
@@ -97,19 +157,38 @@ void usb_command_pc_to_st_task(void *argument)
                 }
             } 
             else if (frame_state == RECEIVING_DATA) {
-                    if (is_queue_write_cmd) {
-                    } else {
-                        memcpy(big_buffer + received_length, usbData.Buf, usbData.Length);
-                    }
                     received_length += usbData.Length;
                     if (received_length >= expected_total_length) {
-                       
-                        uint32_t cmd_length = received_length - 8; 
-                        Process_Command(big_buffer + 4, &cmd_length); 
+                        if (is_boot_write_cmd) {
+                           
+                            uint32_t data_length = usbData.Length - 4;  
+                            if (data_length > 0) {
+                                GD25QXX_WriteBytes(qspi_current_addr, usbData.Buf, data_length);
+                                qspi_current_addr += data_length;  
+                            }
+                        }
+                        else
+                        {
+                            uint32_t cmd_length = received_length - 8; 
+                            Process_Command(big_buffer + 4, &cmd_length); 
+                        }
                         frame_state = WAITING_FOR_HEADER;
                         received_length = 0;
-                        is_queue_write_cmd = 0;
+                        is_boot_write_cmd = 0;
                         image_buffer_index = -1;
+                    }
+                    else
+                    {
+                        if (is_boot_write_cmd) {
+                            // 中间包：追加写入所有数据
+                            GD25QXX_WriteBytes(qspi_current_addr, usbData.Buf, usbData.Length);
+                            qspi_current_addr += usbData.Length;  // 更新地址
+                        } else {
+                            memcpy(big_buffer + received_length, usbData.Buf, usbData.Length);
+                        }
+
+
+                        
                     }
             }
         }

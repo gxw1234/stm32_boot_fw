@@ -39,6 +39,7 @@
 #include <stdarg.h>
 #include <stdlib.h>
 #include "tasks/debug_task.h"
+#include "boot_mode.h"
 
 /* USB命令处理任务声明 */
 extern void usb_command_pc_to_st_task(void *pvParameters);
@@ -81,7 +82,7 @@ void StartDefaultTask(void const * argument);
 void StartPrintTask(void * argument);  /* 新的打印线程函数声明 */
 
 /* USER CODE BEGIN PFP */
-
+static void Jump_To_Application(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -134,6 +135,22 @@ int main(void)
   /* USER CODE BEGIN 2 */
   /* 初始化UART和printf重定向 */
   UART_Init();
+  
+  /* 初始化启动模式 */
+  Boot_Mode_Init();
+  
+  /* 检查启动模式 */
+  uint32_t boot_mode = Boot_Mode_Get();
+  printf("Boot mode register: 0x%08lX\r\n", boot_mode);
+  
+  if (boot_mode == BOOT_MODE_APPLICATION) {
+    printf("Jumping to application...\r\n");
+    Jump_To_Application();
+    /* 如果跳转失败，继续执行bootloader */
+    printf("Jump to application failed, staying in bootloader\r\n");
+  } else {
+    printf("Staying in bootloader mode\r\n");
+  }
   
   MX_USB_DEVICE_Init();  
   
@@ -192,7 +209,7 @@ int main(void)
   // xTaskCreate(StartPrintTask, "PrintTask", configMINIMAL_STACK_SIZE * 2, NULL, 1, (TaskHandle_t*)&printTaskHandle);
   
   /*创建USB命令处理线程 */
-  xTaskCreate(usb_command_pc_to_st_task, "UsbCmdTask", configMINIMAL_STACK_SIZE * 4, NULL, 7, &UsbCmdTaskHandle);  // 提高优先级到9，确保USB任务优先于SPI任务
+  xTaskCreate(usb_command_pc_to_st_task, "UsbCmdTask", configMINIMAL_STACK_SIZE * 4, NULL, 7, &UsbCmdTaskHandle);  
 
 
   // /*创建调试线程 */
@@ -355,6 +372,39 @@ void MPU_Config(void)
   HAL_MPU_Enable(MPU_PRIVILEGED_DEFAULT);
 
 }
+
+/* USER CODE BEGIN 4 */
+/**
+  * @brief  跳转到应用程序
+  * @retval None
+  */
+static void Jump_To_Application(void)
+{
+  uint32_t app_address = 0x08020000;  // 应用程序起始地址（128KB偏移）
+  uint32_t stack_pointer = *(volatile uint32_t*)app_address;
+  uint32_t jump_address = *(volatile uint32_t*)(app_address + 4);
+  
+  /* 检查应用程序是否有效 */
+  if ((stack_pointer & 0x2FFE0000) == 0x20000000) {
+    printf("Valid application found at 0x%08lX\r\n", app_address);
+    
+    /* 禁用所有中断 */
+    __disable_irq();
+    
+    /* 重置所有外设 */
+    HAL_DeInit();
+    
+    /* 设置主堆栈指针 */
+    __set_MSP(stack_pointer);
+    
+    /* 跳转到应用程序 */
+    void (*app_reset_handler)(void) = (void*)jump_address;
+    app_reset_handler();
+  } else {
+    printf("No valid application found at 0x%08lX\r\n", app_address);
+  }
+}
+/* USER CODE END 4 */
 
 /**
   * @brief  This function is executed in case of error occurrence.

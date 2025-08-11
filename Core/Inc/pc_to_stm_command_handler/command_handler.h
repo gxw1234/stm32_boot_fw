@@ -58,9 +58,11 @@
 
 
 //----Bootloader------------
+#define BOOTLOADER_START_WRITE    0x04    // 开始写数据命令
 #define BOOTLOADER_WRITE_BYTES    0x05    // 写数据命令
 #define BOOTLOADER_SWITCH_RUN   0x06    // 切换到RUN模式
 #define BOOTLOADER_SWITCH_BOOT   0x07    // 切换到BOOT模式
+#define BOOTLOADER_RESET        0x08    // 复位命令
 
 
 
