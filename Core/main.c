@@ -28,7 +28,6 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include <string.h>
-#include "tasks/image_queue_task.h"
 #include <stdio.h>
 #include "FreeRTOS.h"
 #include "task.h"
@@ -163,8 +162,6 @@ int main(void)
 
 
 
-  /* 初始化图像队列系统 */
-  ImageQueue_Init();
   
   /* 创建USB命令处理任务 */
   /* USER CODE END 2 */
@@ -194,19 +191,6 @@ int main(void)
   /*打印线程 */
   // xTaskCreate(StartPrintTask, "PrintTask", configMINIMAL_STACK_SIZE * 2, NULL, 1, (TaskHandle_t*)&printTaskHandle);
   
-  /* 创建LCD显示线程 */
-  // xTaskCreate(LCD_Task, "LCDTask", configMINIMAL_STACK_SIZE * 4, NULL, 2, &lcdTaskHandle);
-  /* USER CODE END RTOS_THREADS */
-
-  /*创建ADS1220线程 */
-  // xTaskCreate(ADS1220_Task, "ADS1220Task", configMINIMAL_STACK_SIZE * 4, NULL, 2, &ads1220TaskHandle);
-  
-  /*创建MP8865线程 */
-  // xTaskCreate(MP8865_Task, "MP8865Task", configMINIMAL_STACK_SIZE * 4, NULL, 2, &mp8865TaskHandle);
-  
-  // /*摄像头IIC中断线程 */
-  xTaskCreate(IIC_interruption_Task, "UsbSendTask", configMINIMAL_STACK_SIZE * 2, NULL, 4, &UsbSendTaskHandle);
-
   /*创建USB命令处理线程 */
   xTaskCreate(usb_command_pc_to_st_task, "UsbCmdTask", configMINIMAL_STACK_SIZE * 4, NULL, 7, &UsbCmdTaskHandle);  // 提高优先级到9，确保USB任务优先于SPI任务
 
@@ -308,7 +292,7 @@ void SystemClock_Config(void)
 void StartDefaultTask(void const * argument)
 {
   /* USER CODE BEGIN 5 */
-  char msg[] = "Version 1.0.0\n\r";  
+  char msg[] = "Bootloader Version 1.0.0\n\r";  
   printf("%s", msg);
   /* Infinite loop */
   for(;;)

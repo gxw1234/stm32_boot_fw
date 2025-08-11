@@ -13,6 +13,8 @@
 #define PROTOCOL_GPIO       0x04    // GPIO协议
 #define PROTOCOL_POWER      0x05    // 电源协议
 #define PROTOCOL_RESETSTM32      0x06    // 复位STM32
+#define PROTOCOL_BOOTLOADER_WRITE_BYTES    0x07    // 写数据命令
+
 
 // 通用命令ID定义
 #define CMD_INIT            0x01    // 初始化命令
@@ -55,6 +57,11 @@
 #define POWER_CHANNEL_MA        0x03  // 毫安电流通道
 
 
+//----Bootloader------------
+#define BOOTLOADER_WRITE_BYTES    0x05    // 写数据命令
+#define BOOTLOADER_SWITCH_RUN   0x06    // 切换到RUN模式
+#define BOOTLOADER_SWITCH_BOOT   0x07    // 切换到BOOT模式
+
 
 
 // 通用命令包头结构
@@ -72,24 +79,6 @@ typedef struct _PARAM_HEADER {
   uint16_t param_len;     // 参数长度
 } PARAM_HEADER, *PPARAM_HEADER;
 
-// SPI索引定义（保留向后兼容性）
-#define SPI1_CS0    0
-#define SPI1_CS1    1
-#define SPI1_CS2    2
-#define SPI2_CS0    3
-#define SPI2_CS1    4
-#define SPI2_CS2    5
-
-// SPI配置结构体（保留向后兼容性）
-typedef struct _SPI_CONFIG {
-  char   Mode;            // SPI控制方式:0-硬件控制（全双工模式）,1-硬件控制（半双工模式），2-软件控制（半双工模式）,3-单总线模式，数据线输入输出都为MOSI,4-软件控制（全双工模式）  
-  char   Master;          // 主从选择控制:0-从机，1-主机  
-  char   CPOL;            // 时钟极性控制:0-SCK空闲时为低电平，1-SCK空闲时为高电平  
-  char   CPHA;            // 时钟相位控制:0-第一个SCK时钟采样，1-第二个SCK时钟采样  
-  char   LSBFirst;        // 数据移位方式:0-MSB在前，1-LSB在前  
-  char   SelPolarity;     // 片选信号极性:0-低电平选中，1-高电平选中  
-  unsigned int  ClockSpeedHz;    // SPI时钟频率:单位为HZ，硬件模式下最处50000000，最小390625，频率按2的倍数改变  
-} SPI_CONFIG, *PSPI_CONFIG;
 
 
 

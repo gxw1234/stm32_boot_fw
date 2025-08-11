@@ -44,7 +44,6 @@ target_sources(stm32cubemx INTERFACE
     ../../Core/Src/init/gd25qxx.c
     ../../Core/Src/init/qspi_init.c
     ../../Core/Src/tasks/debug_task.c
-    ../../Core/Src/tasks/image_queue_task.c
     ../../Core/Src/Font_library/fonts.c
     ../../Core/Src/config/freertos.c
     ../../Core/Src/config/stm32h7xx_it.c
@@ -95,7 +94,6 @@ target_sources(stm32cubemx INTERFACE
     ../../Core/Src/config/syscalls.c
     ../../startup_stm32h750xx.s
     ../../Core/Src/pc_to_stm_command_handler/command_handler.c
-    ../../Core/Src/pc_to_stm_command_handler/handler_spi.c
     ../../Core/Src/pc_to_stm_command_handler/handler_iic.c
     ../../Core/Src/pc_to_stm_command_handler/handler_reset_usb3300_stm32.c
     ../../Core/Src/pc_to_stm_command_handler/handler_gpio.c
