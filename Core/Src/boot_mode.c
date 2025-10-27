@@ -1,7 +1,10 @@
 #include "boot_mode.h"
 
-/* 使用DTCMRAM的一个固定地址作为启动模式寄存器 */
-#define BOOT_MODE_REG_ADDR  0x20000000  // DTCMRAM起始地址
+/* 使用RTC备份寄存器存储启动模式，重启和掉电后都能保持 */
+#define BOOT_MODE_RTC_BACKUP_REG_INDEX    0  // 使用备份寄存器0
+
+/* RTC备份寄存器直接访问宏 */
+#define RTC_BACKUP_REG(index)   (&(RTC->BKP0R) + (index))
 
 /**
   * @brief  初始化启动模式
@@ -9,7 +12,16 @@
   */
 void Boot_Mode_Init(void)
 {
-    /* DTCMRAM在系统复位后会保持数据，无需特殊初始化 */
+    /* PWR模块在STM32H7中通常默认启用，无需手动启用时钟 */
+    
+    /* 启用对备份域的访问 */
+    PWR->CR1 |= PWR_CR1_DBP;
+    
+    /* 启用RTC时钟 - 直接操作RCC寄存器 */
+    RCC->BDCR |= RCC_BDCR_RTCEN;
+    
+    /* 等待备份域访问生效 */
+    while ((PWR->CR1 & PWR_CR1_DBP) == 0);
 }
 
 /**
@@ -18,7 +30,15 @@ void Boot_Mode_Init(void)
   */
 uint32_t Boot_Mode_Get(void)
 {
-    return *(volatile uint32_t*)BOOT_MODE_REG_ADDR;
+    /* 确保备份域访问已启用 */
+    if ((PWR->CR1 & PWR_CR1_DBP) == 0)
+    {
+        PWR->CR1 |= PWR_CR1_DBP;
+        while ((PWR->CR1 & PWR_CR1_DBP) == 0);
+    }
+    
+    /* 直接读取RTC备份寄存器 */
+    return *((volatile uint32_t*)RTC_BACKUP_REG(BOOT_MODE_RTC_BACKUP_REG_INDEX));
 }
 
 /**
@@ -28,5 +48,13 @@ uint32_t Boot_Mode_Get(void)
   */
 void Boot_Mode_Set(uint32_t mode)
 {
-    *(volatile uint32_t*)BOOT_MODE_REG_ADDR = mode;
+    /* 确保备份域访问已启用 */
+    if ((PWR->CR1 & PWR_CR1_DBP) == 0)
+    {
+        PWR->CR1 |= PWR_CR1_DBP;
+        while ((PWR->CR1 & PWR_CR1_DBP) == 0);
+    }
+    
+    /* 直接写入RTC备份寄存器 */
+    *((volatile uint32_t*)RTC_BACKUP_REG(BOOT_MODE_RTC_BACKUP_REG_INDEX)) = mode;
 }

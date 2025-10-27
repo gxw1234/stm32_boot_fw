@@ -12,14 +12,8 @@
 
 #define CMD_END_MARKER      0xA5A5A5A5
 #define FRAME_START_MARKER  0x5A5A5A5A 
-
-
-
-// 定义大缓冲区大小 - 优化为1KB
 #define BIG_BUFFER_SIZE (1024)  
-// 将大缓冲区放到主RAM区域，避免DTCMRAM溢出
 static uint8_t big_buffer[BIG_BUFFER_SIZE] ;
-
 typedef enum {
     WAITING_FOR_HEADER,     // 等待帧头
     RECEIVING_DATA          // 正在接收数据
@@ -91,7 +85,6 @@ void usb_command_pc_to_st_task(void *argument)
                             frame_type = protocol_type;
                             cmd_id = cmd_id_byte;
                             expected_total_length = 4 + total_packets + 4;      
-                            
                             received_length = usbData.Length;
                             if (received_length >= expected_total_length) {
                                 switch (protocol_type) {
@@ -100,17 +93,43 @@ void usb_command_pc_to_st_task(void *argument)
                                             case BOOTLOADER_START_WRITE:
                                                 qspi_current_addr = QSPI_FIRMWARE_START_ADDR;
                                                 printf("Bootloader start write, reset QSPI address to 0x%08lX\n", qspi_current_addr);
+                                                
+                                                // 擦除应用程序区域 (从128KB开始，擦除足够的扇区)
+                                                printf("Erasing application Flash sectors...\n");
+                                                for (uint32_t sector_addr = QSPI_FIRMWARE_START_ADDR; 
+                                                     sector_addr < QSPI_FIRMWARE_START_ADDR + 0x100000; // 1MB区域
+                                                     sector_addr += 0x1000) { // 4KB扇区
+                                                    GD25QXX_EraseSector(sector_addr);
+                                                }
+                                                printf("Flash erase completed\n");
                                                 break;
                                             case BOOTLOADER_WRITE_BYTES:
-                                                qspi_current_addr = QSPI_FIRMWARE_START_ADDR; 
+                                                // 移除地址重置，保持累加写入
                                                 uint32_t data_offset = 12;  
                                                 uint32_t data_length = usbData.Length - data_offset;
                                                 if (received_length >= expected_total_length) {
                                                     data_length -= 4;  
                                                 }
                                                 if (data_length > 0) {
+                                                    // printf("Writing %lu bytes to QSPI addr 0x%08lX\n", data_length, qspi_current_addr);
                                                     GD25QXX_WriteBytes(qspi_current_addr, usbData.Buf + data_offset, data_length);
-                                                    qspi_current_addr += data_length;  // 更新地址
+                                                    
+                                                    // 验证写入的数据
+                                                    if (qspi_current_addr == QSPI_FIRMWARE_START_ADDR) {
+                                                        uint8_t verify_buf[8];
+                                                        GD25QXX_ReadBytes(qspi_current_addr, verify_buf, 8);
+                                                        printf("Verify Flash: %02X %02X %02X %02X %02X %02X %02X %02X\n", 
+                                                               verify_buf[0], verify_buf[1], verify_buf[2], verify_buf[3],
+                                                               verify_buf[4], verify_buf[5], verify_buf[6], verify_buf[7]);
+                                                        
+                                                        // 解析向量表
+                                                        uint32_t sp = *(uint32_t*)verify_buf;
+                                                        uint32_t pc = *(uint32_t*)(verify_buf + 4);
+                                                        printf("Vector table: SP=0x%08X, PC=0x%08X\n", sp, pc);
+                                                    }
+                                                    
+                                                    qspi_current_addr += data_length;
+                                                    // printf("Updated QSPI addr to 0x%08lX\n", qspi_current_addr);
                                                     send_queue_write_response(0);
                                                 }
                                                 is_boot_write_cmd = 1;
@@ -119,6 +138,13 @@ void usb_command_pc_to_st_task(void *argument)
                                                 // 切换到RUN模式
                                                 Boot_Mode_Set(BOOT_MODE_APPLICATION);
                                                 printf("Boot mode switched to APPLICATION\n");
+                                                
+                                                // 刷新XIP缓存确保写入的数据可见
+                                                printf("Flushing XIP cache...\n");
+                                                GD25QXX_DisableXIP();
+                                                HAL_Delay(10);
+                                                GD25QXX_EnableXIP();
+                                                printf("XIP cache flushed\n");
                                                 break;
                                             case BOOTLOADER_SWITCH_BOOT:
                                                 // 切换到BOOT模式
@@ -186,11 +212,73 @@ void usb_command_pc_to_st_task(void *argument)
                         } else {
                             memcpy(big_buffer + received_length, usbData.Buf, usbData.Length);
                         }
-
-
-                        
                     }
             }
         }
     }
+}
+
+void Jump_To_Application(void)
+{
+    // 添加命令模式验证
+    uint8_t cmd_data[8];
+    printf("=== Flash Read Verification ===\n");
+    
+    // // 命令模式读取
+    // if (GD25QXX_ReadData(0x020000, cmd_data, 8) == 0) {
+    //     printf("Command mode read: %02X %02X %02X %02X %02X %02X %02X %02X\n",
+    //            cmd_data[0], cmd_data[1], cmd_data[2], cmd_data[3],
+    //            cmd_data[4], cmd_data[5], cmd_data[6], cmd_data[7]);
+    // } else {
+    //     printf("Command mode read failed\n");
+    // }
+    
+    // XIP模式读取
+    GD25QXX_EnableXIP();
+    HAL_Delay(10);
+    
+    uint32_t *xip_addr = (uint32_t*)0x90020000;
+    printf("XIP mode read: %08X %08X\n", xip_addr[0], xip_addr[1]);
+    
+    // XIP缓存刷新
+    GD25QXX_DisableXIP();
+    HAL_Delay(10);
+    GD25QXX_EnableXIP();
+    HAL_Delay(10);
+    
+    printf("XIP after cache flush: %08X %08X\n", xip_addr[0], xip_addr[1]);
+    
+    uint32_t stackPointer = xip_addr[0];
+    uint32_t resetVector = xip_addr[1];
+    
+    printf("Stack Pointer: 0x%08X\n", stackPointer);
+    printf("Reset Vector: 0x%08X\n", resetVector);
+
+    if (stackPointer == 0xFFFFFFFF || resetVector == 0xFFFFFFFF) {
+        printf("Invalid vector table - aborting jump\n");
+        return;
+    }
+
+    printf("Jumping to application...\n");
+    HAL_Delay(100);
+
+    // 完整的系统重置
+    HAL_DeInit();
+    HAL_RCC_DeInit();
+    
+    // 重置SysTick
+    SysTick->CTRL = 0;
+    SysTick->LOAD = 0;
+    SysTick->VAL = 0;
+
+    __disable_irq();
+    
+    SCB->VTOR = 0x90020000;
+    __DSB();
+    __ISB();
+    
+    __set_MSP(stackPointer);
+    
+    void (*app_reset_handler)(void) = (void (*)(void))(resetVector);
+    app_reset_handler();
 }

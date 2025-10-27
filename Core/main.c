@@ -38,6 +38,7 @@
 #include "init/uart_init.h"
 #include <stdarg.h>
 #include <stdlib.h>
+#include <stddef.h>
 #include "tasks/debug_task.h"
 #include "boot_mode.h"
 
@@ -83,6 +84,8 @@ void StartPrintTask(void * argument);  /* 新的打印线程函数声明 */
 
 /* USER CODE BEGIN PFP */
 static void Jump_To_Application(void);
+static void dump_hex(const uint8_t* addr, uint32_t base, size_t len);
+static const uint8_t* find_app_end(const uint8_t* start, size_t max_len);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -135,53 +138,69 @@ int main(void)
   /* USER CODE BEGIN 2 */
   /* 初始化UART和printf重定向 */
   UART_Init();
-  
   /* 初始化启动模式 */
   Boot_Mode_Init();
-  
-  /* 检查启动模式 */
-  uint32_t boot_mode = Boot_Mode_Get();
-  printf("Boot mode register: 0x%08lX\r\n", boot_mode);
-  
+
+
+  // Boot_Mode_Set(BOOT_MODE_BOOTLOADER);
+  Boot_Mode_Set(BOOT_MODE_APPLICATION);
+
+
+ /* 检查启动模式 */
+ uint32_t boot_mode = Boot_Mode_Get();
+ printf("Boot mode register: 0x%08lX\r\n", boot_mode);
+ 
+ // 检查应用程序内存标记状态
+ volatile uint32_t *app_status = (volatile uint32_t *)0x20010000;
+ uint32_t status = *app_status;
+ printf("Application memory status: 0x%08X\r\n", status);
+ 
+ if (status == 0xDEADBEEF) {
+     printf("Previous application execution detected\r\n");
+ } else if (status == 0xCAFEBABE) {
+     printf("Previous application UART config completed\r\n");
+ } else if (status == 0x12345678) {
+     printf("Previous application UART output completed\r\n");
+ } else if (status == 0x00000000) {
+     printf("No previous application execution detected\r\n");
+ } else {
+     printf("Unknown application status: 0x%08X\r\n", status);
+ }
+ 
   if (boot_mode == BOOT_MODE_APPLICATION) {
     printf("Jumping to application...\r\n");
-    Jump_To_Application();
-    /* 如果跳转失败，继续执行bootloader */
-    printf("Jump to application failed, staying in bootloader\r\n");
+
+    if (GD25QXX_EnableXIP() != HAL_OK) {
+      printf("ERROR: Failed to enable XIP mode\r\n");
+    } else {
+      /* 在跳转前打印XIP映射数据的头部与尾部用于一致性校验 */
+      const uint8_t* app = (const uint8_t*)0x90020000;
+      printf("=== XIP HEAD/TAIL DUMP ===\r\n");
+      printf("Head @ 0x%08lX:\r\n", (uint32_t)app);
+      dump_hex(app, (uint32_t)app, 64);
+
+      const size_t max_scan = 0x100000; /* 最多扫描1MB应用区域 */
+      const uint8_t* endp = find_app_end(app, max_scan);
+      const uint8_t* tail = (endp > app + 64) ? (endp - 64) : app;
+      printf("Tail around end @ 0x%08lX (end=0x%08lX):\r\n", (uint32_t)tail, (uint32_t)endp);
+      dump_hex(tail, (uint32_t)tail, 64);
+      printf("=== END DUMP ===\r\n");
+
+      /* 打印结束后执行跳转 */
+      Jump_To_Application();
+      printf("Jump returned unexpectedly, staying in bootloader\r\n");
+    }
   } else {
     printf("Staying in bootloader mode\r\n");
   }
   
+
+
+
   MX_USB_DEVICE_Init();  
   
 
 
-
-  /* 测试QSPI Flash */
-  // uint8_t test_write = 0xA6;
-  // GD25QXX_EraseSector(0x000000);
-  // GD25QXX_WriteByte(0x000000, test_write);
-  // uint8_t after_write = GD25QXX_ReadByte(0x000000);
-  // printf("QSPI Flash After Write: 0x%02X\r\n", after_write);
-  
-  // uint8_t test_buf_write[8] = {0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88};
-  // uint8_t test_buf_read[8] = {0};
-  // GD25QXX_WriteBytes(0x000000, test_buf_write, 8);
-  // GD25QXX_ReadBytes(0x000000, test_buf_read, 8);
-  // printf("QSPI Flash Multi Write: ");
-  // for (int i = 0; i < 8; ++i) printf("%02X ", test_buf_write[i]);
-  // printf("\r\nQSPI Flash Multi Read:  ");
-  // for (int i = 0; i < 8; ++i) printf("%02X ", test_buf_read[i]);
-  // printf("\r\n");
-  
-
-
-
-
-
-  
-  /* 创建USB命令处理任务 */
-  /* USER CODE END 2 */
 
   /* USER CODE BEGIN RTOS_MUTEX */
   /* add mutexes, ... */
@@ -207,17 +226,11 @@ int main(void)
   /* USER CODE BEGIN RTOS_THREADS */
   /*打印线程 */
   // xTaskCreate(StartPrintTask, "PrintTask", configMINIMAL_STACK_SIZE * 2, NULL, 1, (TaskHandle_t*)&printTaskHandle);
-  
   /*创建USB命令处理线程 */
   xTaskCreate(usb_command_pc_to_st_task, "UsbCmdTask", configMINIMAL_STACK_SIZE * 4, NULL, 7, &UsbCmdTaskHandle);  
-
-
   // /*创建调试线程 */
   // xTaskCreate(debug_task, "DebugTask", configMINIMAL_STACK_SIZE * 4, NULL, 5, &DebugTaskHandle);
-
-
   osKernelStart();
-
   /* We should never get here as control is now taken by the scheduler */
 
   /* Infinite loop */
@@ -297,6 +310,32 @@ void SystemClock_Config(void)
 
 /* USER CODE BEGIN 4 */
 
+static void dump_hex(const uint8_t* addr, uint32_t base, size_t len)
+{
+  for (size_t i = 0; i < len; i += 16) {
+    printf("  %08lX: ", (unsigned long)(base + (uint32_t)i));
+    for (size_t j = 0; j < 16 && i + j < len; ++j) {
+      printf("%02X ", addr[i + j]);
+    }
+    printf("\r\n");
+  }
+}
+
+static const uint8_t* find_app_end(const uint8_t* start, size_t max_len)
+{
+  if (max_len == 0) return start;
+  const uint8_t* p = start + max_len;
+  /* 向下对齐到4字节边界 */
+  p = (const uint8_t*)((uint32_t)p & ~3u);
+  while (p > start) {
+    p -= 4;
+    uint32_t w = *(volatile const uint32_t*)p;
+    if (w != 0xFFFFFFFFu) {
+      return p + 4; /* 返回第一个非全FF字的末尾 */
+    }
+  }
+  return start; /* 全FF，认为没有有效数据 */
+}
 /* USER CODE END 4 */
 
 /* USER CODE BEGIN Header_StartDefaultTask */
@@ -368,6 +407,23 @@ void MPU_Config(void)
   MPU_InitStruct.IsBufferable = MPU_ACCESS_NOT_BUFFERABLE;
 
   HAL_MPU_ConfigRegion(&MPU_InitStruct);
+
+  /** Configure QSPI XIP region for external Flash access
+  */
+  MPU_InitStruct.Enable = MPU_REGION_ENABLE;
+  MPU_InitStruct.Number = MPU_REGION_NUMBER1;
+  MPU_InitStruct.BaseAddress = 0x90000000;
+  MPU_InitStruct.Size = MPU_REGION_SIZE_16MB;
+  MPU_InitStruct.SubRegionDisable = 0x00;
+  MPU_InitStruct.TypeExtField = MPU_TEX_LEVEL0;
+  MPU_InitStruct.AccessPermission = MPU_REGION_FULL_ACCESS;
+  MPU_InitStruct.DisableExec = MPU_INSTRUCTION_ACCESS_ENABLE;  // 允许执行，用于XIP
+  MPU_InitStruct.IsShareable = MPU_ACCESS_NOT_SHAREABLE;
+  MPU_InitStruct.IsCacheable = MPU_ACCESS_CACHEABLE;
+  MPU_InitStruct.IsBufferable = MPU_ACCESS_BUFFERABLE;
+
+  HAL_MPU_ConfigRegion(&MPU_InitStruct);
+  
   /* Enables the MPU */
   HAL_MPU_Enable(MPU_PRIVILEGED_DEFAULT);
 
@@ -380,29 +436,34 @@ void MPU_Config(void)
   */
 static void Jump_To_Application(void)
 {
-  uint32_t app_address = 0x08020000;  // 应用程序起始地址（128KB偏移）
-  uint32_t stack_pointer = *(volatile uint32_t*)app_address;
-  uint32_t jump_address = *(volatile uint32_t*)(app_address + 4);
-  
-  /* 检查应用程序是否有效 */
-  if ((stack_pointer & 0x2FFE0000) == 0x20000000) {
-    printf("Valid application found at 0x%08lX\r\n", app_address);
-    
-    /* 禁用所有中断 */
-    __disable_irq();
-    
-    /* 重置所有外设 */
-    HAL_DeInit();
-    
-    /* 设置主堆栈指针 */
-    __set_MSP(stack_pointer);
-    
-    /* 跳转到应用程序 */
-    void (*app_reset_handler)(void) = (void*)jump_address;
-    app_reset_handler();
-  } else {
-    printf("No valid application found at 0x%08lX\r\n", app_address);
-  }
+  const uint32_t app_address = 0x90020000;   /* 固定应用地址 */
+  const uint32_t stack_pointer = *(volatile uint32_t*)app_address;
+  const uint32_t jump_address  = *(volatile uint32_t*)(app_address + 4);
+
+  printf("Jumping to application at 0x%08lX...\r\n", app_address);
+  /* 可选：简单打印用于最后一次确认 */
+  printf("SP=0x%08lX, PC=0x%08lX\r\n", stack_pointer, jump_address);
+
+  /* 清理运行环境 */
+  __disable_irq();
+  HAL_DeInit();
+  HAL_RCC_DeInit();
+  SysTick->CTRL = 0;
+  SysTick->LOAD = 0;
+  SysTick->VAL  = 0;
+
+  /* 设置向量表偏移和主堆栈指针 */
+  SCB->VTOR = app_address;
+  __DSB();
+  __ISB();
+  __set_MSP(stack_pointer);
+
+  /* 跳转到复位向量 */
+  void (*app_reset_handler)(void) = (void(*)(void))jump_address;
+  app_reset_handler();
+
+  /* 若返回，则视为失败 */
+  printf("Jump returned unexpectedly.\r\n");
 }
 /* USER CODE END 4 */
 

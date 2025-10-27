@@ -52,9 +52,9 @@ void MX_QUADSPI_Init(void)
     __HAL_RCC_QSPI_RELEASE_RESET();
     QSPI_GPIO_Init();
     hqspi.Instance = QUADSPI;
-    hqspi.Init.ClockPrescaler = 4; // QSPI clock = f_AHB / (ClockPrescaler+1)
+    hqspi.Init.ClockPrescaler = 9; // QSPI clock = f_AHB / (ClockPrescaler+1) = 480MHz/10 = 48MHz
     hqspi.Init.FifoThreshold = 4;
-    hqspi.Init.SampleShifting = QSPI_SAMPLE_SHIFTING_NONE;
+    hqspi.Init.SampleShifting = QSPI_SAMPLE_SHIFTING_HALFCYCLE;
     hqspi.Init.FlashSize = 23; // 2^24 = 16MB (GD25Q128)
     hqspi.Init.ChipSelectHighTime = QSPI_CS_HIGH_TIME_1_CYCLE;
     hqspi.Init.ClockMode = QSPI_CLOCK_MODE_0;
