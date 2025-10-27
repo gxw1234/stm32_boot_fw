@@ -143,7 +143,7 @@ int main(void)
 
 
   // Boot_Mode_Set(BOOT_MODE_BOOTLOADER);
-  Boot_Mode_Set(BOOT_MODE_APPLICATION);
+  // Boot_Mode_Set(BOOT_MODE_APPLICATION);
 
 
  /* 检查启动模式 */
@@ -174,17 +174,17 @@ int main(void)
       printf("ERROR: Failed to enable XIP mode\r\n");
     } else {
       /* 在跳转前打印XIP映射数据的头部与尾部用于一致性校验 */
-      const uint8_t* app = (const uint8_t*)0x90020000;
-      printf("=== XIP HEAD/TAIL DUMP ===\r\n");
-      printf("Head @ 0x%08lX:\r\n", (uint32_t)app);
-      dump_hex(app, (uint32_t)app, 64);
+      // const uint8_t* app = (const uint8_t*)0x90020000;
+      // printf("=== XIP HEAD/TAIL DUMP ===\r\n");
+      // printf("Head @ 0x%08lX:\r\n", (uint32_t)app);
+      // dump_hex(app, (uint32_t)app, 64);
 
-      const size_t max_scan = 0x100000; /* 最多扫描1MB应用区域 */
-      const uint8_t* endp = find_app_end(app, max_scan);
-      const uint8_t* tail = (endp > app + 64) ? (endp - 64) : app;
-      printf("Tail around end @ 0x%08lX (end=0x%08lX):\r\n", (uint32_t)tail, (uint32_t)endp);
-      dump_hex(tail, (uint32_t)tail, 64);
-      printf("=== END DUMP ===\r\n");
+      // const size_t max_scan = 0x100000; /* 最多扫描1MB应用区域 */
+      // const uint8_t* endp = find_app_end(app, max_scan);
+      // const uint8_t* tail = (endp > app + 64) ? (endp - 64) : app;
+      // printf("Tail around end @ 0x%08lX (end=0x%08lX):\r\n", (uint32_t)tail, (uint32_t)endp);
+      // dump_hex(tail, (uint32_t)tail, 64);
+      // printf("=== END DUMP ===\r\n");
 
       /* 打印结束后执行跳转 */
       Jump_To_Application();
@@ -444,13 +444,8 @@ static void Jump_To_Application(void)
   /* 可选：简单打印用于最后一次确认 */
   printf("SP=0x%08lX, PC=0x%08lX\r\n", stack_pointer, jump_address);
 
-  /* 清理运行环境 */
+  /* 清理运行环境（仅关中断，避免影响QSPI XIP运行） */
   __disable_irq();
-  HAL_DeInit();
-  HAL_RCC_DeInit();
-  SysTick->CTRL = 0;
-  SysTick->LOAD = 0;
-  SysTick->VAL  = 0;
 
   /* 设置向量表偏移和主堆栈指针 */
   SCB->VTOR = app_address;
