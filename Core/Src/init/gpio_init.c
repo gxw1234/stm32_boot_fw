@@ -25,97 +25,98 @@ void MX_GPIO_Init(void)
   __HAL_RCC_GPIOI_CLK_ENABLE();  // LCD使用的GPIOI
 
   __HAL_RCC_GPIOE_CLK_ENABLE();
+  __HAL_RCC_GPIOF_CLK_ENABLE();
 
 /* USER CODE BEGIN MX_GPIO_Init_2 */
   // LCD引脚初始化（ST7789）- 与原始工作项目保持一致
   // 基于软件SPI，所有引脚配置为输出模式
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;  // 改为无上拉下拉，与原始项目一致
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
+  // GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  // GPIO_InitStruct.Pull = GPIO_NOPULL;  // 改为无上拉下拉，与原始项目一致
+  // GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
   
-  // GPIOG引脚初始化 - LCD信号引脚
-  GPIO_InitStruct.Pin = GPIO_PIN_8 | GPIO_PIN_12 | GPIO_PIN_13 | GPIO_PIN_14 | GPIO_PIN_15;
-  HAL_GPIO_Init(GPIOG, &GPIO_InitStruct);
+  // // GPIOG引脚初始化 - LCD信号引脚
+  // GPIO_InitStruct.Pin = GPIO_PIN_8 | GPIO_PIN_12 | GPIO_PIN_13 | GPIO_PIN_14 | GPIO_PIN_15;
+  // HAL_GPIO_Init(GPIOG, &GPIO_InitStruct);
   
-  // GPIOI引脚初始化 - LCD背光控制
-  GPIO_InitStruct.Pin = GPIO_PIN_6;
-  HAL_GPIO_Init(GPIOI, &GPIO_InitStruct);
+  // // GPIOI引脚初始化 - LCD背光控制
+  // GPIO_InitStruct.Pin = GPIO_PIN_6;
+  // HAL_GPIO_Init(GPIOI, &GPIO_InitStruct);
   
 
-  HAL_GPIO_WritePin(GPIOG, GPIO_PIN_8, GPIO_PIN_SET);   // CS拉高，不选中
-  HAL_GPIO_WritePin(GPIOG, GPIO_PIN_12, GPIO_PIN_SET);  // RST拉高
-  HAL_GPIO_WritePin(GPIOI, GPIO_PIN_6, GPIO_PIN_RESET); // 背光打开（低电平激活）
+  // HAL_GPIO_WritePin(GPIOG, GPIO_PIN_8, GPIO_PIN_SET);   // CS拉高，不选中
+  // HAL_GPIO_WritePin(GPIOG, GPIO_PIN_12, GPIO_PIN_SET);  // RST拉高
+  // HAL_GPIO_WritePin(GPIOI, GPIO_PIN_6, GPIO_PIN_RESET); // 背光打开（低电平激活）
   
   /* 配置外部中断引脚 */
   /*Configure GPIO pin : PH10 */
-  GPIO_InitStruct.Pin = GPIO_PIN_10;
-  GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
-  GPIO_InitStruct.Pull = GPIO_PULLUP;
-  HAL_GPIO_Init(GPIOH, &GPIO_InitStruct);
+  // GPIO_InitStruct.Pin = GPIO_PIN_10;
+  // GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
+  // GPIO_InitStruct.Pull = GPIO_PULLUP;
+  // HAL_GPIO_Init(GPIOH, &GPIO_InitStruct);
 
-  /*Configure GPIO pin : PH9 
-  毫安档
-  */
+  // /*Configure GPIO pin : PH9 
+  // 毫安档
+  // */
 
-  GPIO_InitStruct.Pin = GPIO_PIN_9;
-  GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
-  GPIO_InitStruct.Pull = GPIO_PULLUP;
-  HAL_GPIO_Init(GPIOH, &GPIO_InitStruct);
+  // GPIO_InitStruct.Pin = GPIO_PIN_9;
+  // GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
+  // GPIO_InitStruct.Pull = GPIO_PULLUP;
+  // HAL_GPIO_Init(GPIOH, &GPIO_InitStruct);
   
   /* EXTI中断将在ADS1220_Init()函数结束时启用 */
 
 
-  GPIO_InitStruct.Pin = GPIO_PIN_1;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-  GPIO_InitStruct.Pull = GPIO_PULLDOWN;
-  HAL_GPIO_Init(GPIOG, &GPIO_InitStruct);
+  // GPIO_InitStruct.Pin = GPIO_PIN_1;
+  // GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  // GPIO_InitStruct.Pull = GPIO_PULLDOWN;
+  // HAL_GPIO_Init(GPIOG, &GPIO_InitStruct);
   
-  /* A2引脚配置 
-  供电的时候需要拉低生效才供电
-  */
-  GPIO_InitStruct.Pin = GPIO_PIN_2;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
-  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
-  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_2, GPIO_PIN_RESET); // 设置为低电平,  底通电
+  // /* A2引脚配置 
+  // 供电的时候需要拉低生效才供电
+  // */
+  // GPIO_InitStruct.Pin = GPIO_PIN_2;
+  // GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  // GPIO_InitStruct.Pull = GPIO_NOPULL;
+  // GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
+  // HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+  // HAL_GPIO_WritePin(GPIOA, GPIO_PIN_2, GPIO_PIN_RESET); // 设置为低电平,  底通电
 
   /* E11   E11引脚配置 
   读取功耗的两个CS角
   */
 
-  GPIO_InitStruct.Pin = GPIO_PIN_11;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-  GPIO_InitStruct.Pull = GPIO_PULLUP;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
-  HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
-  /* CS1默认高电平 */
-  HAL_GPIO_WritePin(GPIOE, GPIO_PIN_11, GPIO_PIN_SET);
+  // GPIO_InitStruct.Pin = GPIO_PIN_11;
+  // GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  // GPIO_InitStruct.Pull = GPIO_PULLUP;
+  // GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
+  // HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
+  // /* CS1默认高电平 */
+  // HAL_GPIO_WritePin(GPIOE, GPIO_PIN_11, GPIO_PIN_SET);
   
 
-  /* CS2引脚配置 */
-  GPIO_InitStruct.Pin = GPIO_PIN_15;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-  GPIO_InitStruct.Pull = GPIO_PULLUP;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
-  HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
-  /* CS2默认高电平 */
-  HAL_GPIO_WritePin(GPIOE, GPIO_PIN_15, GPIO_PIN_SET);
+  // /* CS2引脚配置 */
+  // GPIO_InitStruct.Pin = GPIO_PIN_15;
+  // GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  // GPIO_InitStruct.Pull = GPIO_PULLUP;
+  // GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
+  // HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
+  // /* CS2默认高电平 */
+  // HAL_GPIO_WritePin(GPIOE, GPIO_PIN_15, GPIO_PIN_SET);
 
 
-  /* G1引脚配置 
-  PG1_ST_CTRL_VOT_DC
-  G1 量程切换引角  低电平量程为：1.1V -3.V
-  高电平量程为：3.2V -7.5V
-  GAIN=1.72 电压范围1.034V--3.22V
-  */
+  // /* G1引脚配置 
+  // PG1_ST_CTRL_VOT_DC
+  // G1 量程切换引角  低电平量程为：1.1V -3.V
+  // 高电平量程为：3.2V -7.5V
+  // GAIN=1.72 电压范围1.034V--3.22V
+  // */
   
-  GPIO_InitStruct.Pin = GPIO_PIN_1;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
-  HAL_GPIO_Init(GPIOG, &GPIO_InitStruct);
-  HAL_GPIO_WritePin(GPIOG, GPIO_PIN_1, GPIO_PIN_RESET); // 设置为低电平
+  // GPIO_InitStruct.Pin = GPIO_PIN_1;
+  // GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  // GPIO_InitStruct.Pull = GPIO_NOPULL;
+  // GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
+  // HAL_GPIO_Init(GPIOG, &GPIO_InitStruct);
+  // HAL_GPIO_WritePin(GPIOG, GPIO_PIN_1, GPIO_PIN_RESET); // 设置为低电平
 
   /* C5引脚配置 
     PC5_RST_3300
@@ -132,6 +133,12 @@ void MX_GPIO_Init(void)
   HAL_GPIO_WritePin(GPIOC, GPIO_PIN_5, GPIO_PIN_RESET); // 设置为低电平
   HAL_GPIO_WritePin(GPIOC, GPIO_PIN_5, GPIO_PIN_SET); // 设置为高电平
   HAL_GPIO_WritePin(GPIOC, GPIO_PIN_5, GPIO_PIN_RESET); // 设置为低电平
+
+  /* PF3作为启动按键输入，默认上拉 */
+  GPIO_InitStruct.Pin = GPIO_PIN_3;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  HAL_GPIO_Init(GPIOF, &GPIO_InitStruct);
 
   
   printf("GPIO initialization completed with LCD pin settings and interrupts\r\n");

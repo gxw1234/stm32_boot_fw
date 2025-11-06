@@ -31,15 +31,15 @@
 #include <stdio.h>
 #include "FreeRTOS.h"
 #include "task.h"
-#include "tasks/lcd_task.h"
-#include "tasks/ads1220_task.h"
-#include "tasks/MP8865_task.h"
-#include "tasks/test_iic_send.h"
+// #include "tasks/lcd_task.h"
+// #include "tasks/ads1220_task.h"
+// #include "tasks/MP8865_task.h"
+// #include "tasks/test_iic_send.h"
 #include "init/uart_init.h"
 #include <stdarg.h>
 #include <stdlib.h>
 #include <stddef.h>
-#include "tasks/debug_task.h"
+// #include "tasks/debug_task.h"
 #include "boot_mode.h"
 
 /* USB命令处理任务声明 */
@@ -86,6 +86,8 @@ void StartPrintTask(void * argument);  /* 新的打印线程函数声明 */
 static void Jump_To_Application(void);
 static void dump_hex(const uint8_t* addr, uint32_t base, size_t len);
 static const uint8_t* find_app_end(const uint8_t* start, size_t max_len);
+static int App_IsValid(void);
+static int App_IsValidAt(uint32_t app_address);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -148,12 +150,12 @@ int main(void)
 
  /* 检查启动模式 */
  uint32_t boot_mode = Boot_Mode_Get();
- printf("Boot mode register: 0x%08lX\r\n", boot_mode);
+ printf("---------Boot mode register: 0x%08lX\r\n", boot_mode);
  
  // 检查应用程序内存标记状态
  volatile uint32_t *app_status = (volatile uint32_t *)0x20010000;
  uint32_t status = *app_status;
- printf("Application memory status: 0x%08X\r\n", status);
+ printf("Application memory status: 0x%08lX\r\n", (unsigned long)status);
  
  if (status == 0xDEADBEEF) {
      printf("Previous application execution detected\r\n");
@@ -164,35 +166,101 @@ int main(void)
  } else if (status == 0x00000000) {
      printf("No previous application execution detected\r\n");
  } else {
-     printf("Unknown application status: 0x%08X\r\n", status);
+     printf("Unknown application status: 0x%08lX\r\n", (unsigned long)status);
  }
  
-  if (boot_mode == BOOT_MODE_APPLICATION) {
-    printf("Jumping to application...\r\n");
+ /* 先看启动模式：若APP设置为进入Bootloader，则优先停留在Boot并清除标志 */
+ if (boot_mode == BOOT_MODE_BOOTLOADER) {
+   printf("Boot mode request: stay in bootloader for flashing\r\n");
+   /* 清除标志，避免下次上电仍然卡在Bootloader */
+   Boot_Mode_Set(BOOT_MODE_APPLICATION);
+ } else {
+   /* PF3下压则进入BOOT，不跳转 */
+   GPIO_PinState pf3 = HAL_GPIO_ReadPin(GPIOF, GPIO_PIN_3);
+   printf("PF3 state: %s\r\n", (pf3 == GPIO_PIN_RESET) ? "PRESSED(0)" : "RELEASED(1)");
+   if (pf3 == GPIO_PIN_RESET) {
+     printf("PF3 pressed: stay in bootloader\r\n");
+   } else {
+   /* 未按下：检测是否有有效APP，有则跳转 */
+  uint32_t candidates[] = { 0x90020000U, 0x90000000U, 0x08000000U };
+  int found = 0;
+  for (size_t i = 0; i < (sizeof(candidates)/sizeof(candidates[0])); ++i) {
+    uint32_t base = candidates[i];
 
-    if (GD25QXX_EnableXIP() != HAL_OK) {
-      printf("ERROR: Failed to enable XIP mode\r\n");
-    } else {
-      /* 在跳转前打印XIP映射数据的头部与尾部用于一致性校验 */
-      // const uint8_t* app = (const uint8_t*)0x90020000;
-      // printf("=== XIP HEAD/TAIL DUMP ===\r\n");
-      // printf("Head @ 0x%08lX:\r\n", (uint32_t)app);
-      // dump_hex(app, (uint32_t)app, 64);
-
-      // const size_t max_scan = 0x100000; /* 最多扫描1MB应用区域 */
-      // const uint8_t* endp = find_app_end(app, max_scan);
-      // const uint8_t* tail = (endp > app + 64) ? (endp - 64) : app;
-      // printf("Tail around end @ 0x%08lX (end=0x%08lX):\r\n", (uint32_t)tail, (uint32_t)endp);
-      // dump_hex(tail, (uint32_t)tail, 64);
-      // printf("=== END DUMP ===\r\n");
-
-      /* 打印结束后执行跳转 */
-      Jump_To_Application();
-      printf("Jump returned unexpectedly, staying in bootloader\r\n");
+    /* 若为外部QSPI地址，先启用XIP再读取向量表 */
+    if ((base & 0xFF000000U) == 0x90000000U) {
+      HAL_StatusTypeDef xip_pre = GD25QXX_EnableXIP();
+      printf("Pre-EnableXIP for probe status=%d\r\n", (int)xip_pre);
+      if (xip_pre != HAL_OK) {
+        printf("ERROR: Cannot enable XIP for probing 0x%08lX, skip\r\n", (unsigned long)base);
+        continue;
+      }
     }
-  } else {
-    printf("Staying in bootloader mode\r\n");
+
+    uint32_t sp = *(volatile uint32_t*)base;
+    uint32_t pc = *(volatile uint32_t*)(base + 4U);
+    printf("Try base 0x%08lX: SP=0x%08lX, PC=0x%08lX\r\n", (unsigned long)base, (unsigned long)sp, (unsigned long)pc);
+    int valid = App_IsValidAt(base);
+    printf("  -> App_IsValidAt= %d\r\n", valid);
+    if (valid) {
+      printf("Valid application at 0x%08lX\r\n", (unsigned long)base);
+      /* 外部QSPI基址需要启用XIP，内部Flash不需要 */
+      if ((base & 0xFF000000U) == 0x90000000U) {
+        HAL_StatusTypeDef xip = GD25QXX_EnableXIP();
+        printf("EnableXIP status=%d\r\n", (int)xip);
+        if (xip != HAL_OK) {
+          printf("ERROR: Failed to enable XIP mode, continue searching\r\n");
+          continue;
+        }
+        /* 同一跳转函数固定使用0x90020000，目前假设APP链接于0x90020000。如找到0x90000000，则直接设置向量表并跳转此地址 */
+        /* 直接跳转到找到的基址 */
+        __disable_irq();
+        SCB->VTOR = base;
+        __DSB(); __ISB();
+        __set_MSP(*(volatile uint32_t*)base);
+        void (*app_reset_handler)(void) = (void(*)(void))(*(volatile uint32_t*)(base + 4U));
+        app_reset_handler();
+        printf("Jump returned unexpectedly from 0x%08lX\r\n", (unsigned long)base);
+        found = 1; /* 以防万一 */
+        break;
+      } else if ((base & 0xFF000000U) == 0x08000000U) {
+        /* 内部Flash：直接跳转 */
+        __disable_irq();
+        SCB->VTOR = base;
+        __DSB(); __ISB();
+        __set_MSP(*(volatile uint32_t*)base);
+        void (*app_reset_handler)(void) = (void(*)(void))(*(volatile uint32_t*)(base + 4U));
+        app_reset_handler();
+        printf("Jump returned unexpectedly from 0x%08lX\r\n", (unsigned long)base);
+        found = 1;
+        break;
+      } else {
+        /* 默认按原逻辑（0x90020000） */
+        printf("Using default jump helper for 0x%08lX\r\n", (unsigned long)base);
+        HAL_StatusTypeDef xip = GD25QXX_EnableXIP();
+        printf("EnableXIP status=%d\r\n", (int)xip);
+        if (xip == HAL_OK) {
+          /* 覆盖Jump_To_Application默认基址的简单做法：直接在此跳 */
+          __disable_irq();
+          SCB->VTOR = base;
+          __DSB(); __ISB();
+          __set_MSP(*(volatile uint32_t*)base);
+          void (*app_reset_handler)(void) = (void(*)(void))(*(volatile uint32_t*)(base + 4U));
+          app_reset_handler();
+          printf("Jump returned unexpectedly from 0x%08lX\r\n", (unsigned long)base);
+          found = 1;
+          break;
+        } else {
+          printf("ERROR: Failed to enable XIP mode, continue searching\r\n");
+        }
+      }
+    }
   }
+  if (!found) {
+    printf("No valid application in candidates, stay in bootloader\r\n");
+  }
+ }
+ }
   
 
 
@@ -309,34 +377,62 @@ void SystemClock_Config(void)
 /* GPIO initialization is now in Core/Src/init/gpio_init.c */
 
 /* USER CODE BEGIN 4 */
-
-static void dump_hex(const uint8_t* addr, uint32_t base, size_t len)
-{
-  for (size_t i = 0; i < len; i += 16) {
-    printf("  %08lX: ", (unsigned long)(base + (uint32_t)i));
-    for (size_t j = 0; j < 16 && i + j < len; ++j) {
-      printf("%02X ", addr[i + j]);
-    }
-    printf("\r\n");
-  }
-}
-
-static const uint8_t* find_app_end(const uint8_t* start, size_t max_len)
-{
-  if (max_len == 0) return start;
-  const uint8_t* p = start + max_len;
-  /* 向下对齐到4字节边界 */
-  p = (const uint8_t*)((uint32_t)p & ~3u);
-  while (p > start) {
-    p -= 4;
-    uint32_t w = *(volatile const uint32_t*)p;
-    if (w != 0xFFFFFFFFu) {
-      return p + 4; /* 返回第一个非全FF字的末尾 */
-    }
-  }
-  return start; /* 全FF，认为没有有效数据 */
-}
-/* USER CODE END 4 */
+ 
+ static void dump_hex(const uint8_t* addr, uint32_t base, size_t len)
+ {
+   for (size_t i = 0; i < len; i += 16) {
+     printf("  %08lX: ", (unsigned long)(base + (uint32_t)i));
+     for (size_t j = 0; j < 16 && i + j < len; ++j) {
+       printf("%02X ", addr[i + j]);
+     }
+     printf("\r\n");
+   }
+ }
+ 
+ static const uint8_t* find_app_end(const uint8_t* start, size_t max_len)
+ {
+   if (max_len == 0) return start;
+   const uint8_t* p = start + max_len;
+   /* 向下对齐到4字节边界 */
+   p = (const uint8_t*)((uint32_t)p & ~3u);
+   while (p > start) {
+     p -= 4;
+     uint32_t w = *(volatile const uint32_t*)p;
+     if (w != 0xFFFFFFFFu) {
+       return p + 4; /* 返回第一个非全FF字的末尾 */
+     }
+   }
+   return start; /* 全FF，认为没有有效数据 */
+ }
+ 
+ /* 检查应用是否有效（向量表） */
+ static int App_IsValid(void)
+ {
+   return App_IsValidAt(0x90020000U);
+ }
+ 
+ static int App_IsValidAt(uint32_t app_address)
+ {
+   uint32_t sp = *(volatile uint32_t*)app_address;
+   uint32_t pc = *(volatile uint32_t*)(app_address + 4U);
+ 
+   if (sp == 0xFFFFFFFFU || pc == 0xFFFFFFFFU || sp == 0x00000000U || pc == 0x00000000U)
+     return 0;
+ 
+   int sp_ok = 0;
+   if (sp >= 0x20000000U && sp <= 0x20080000U) sp_ok = 1;     /* DTCM RAM */
+   if (sp >= 0x24000000U && sp <= 0x24080000U) sp_ok = 1;     /* AXI SRAM */
+   if (!sp_ok) return 0;
+ 
+   /* 允许XIP范围或内部Flash范围，且Thumb位为1 */
+   int pc_ok = 0;
+   if (pc >= 0x90000001U && pc < 0x91000000U && (pc & 0x1)) pc_ok = 1;  /* 外部QSPI XIP */
+   if (pc >= 0x08000001U && pc < 0x08100000U && (pc & 0x1)) pc_ok = 1;  /* 内部Flash 1MB范围 */
+   if (!pc_ok) return 0;
+ 
+   return 1;
+ }
+ /* USER CODE END 4 */
 
 /* USER CODE BEGIN Header_StartDefaultTask */
 /**

@@ -143,6 +143,43 @@ HAL_StatusTypeDef GD25QXX_ReadID(uint8_t *id) {
     return status;
 }
 
+static HAL_StatusTypeDef GD25QXX_ReadSR2(uint8_t *sr2) {
+    QSPI_CommandTypeDef cmd = {0};
+    cmd.Instruction = 0x35;
+    cmd.InstructionMode = QSPI_INSTRUCTION_1_LINE;
+    cmd.AddressMode = QSPI_ADDRESS_NONE;
+    cmd.DataMode = QSPI_DATA_1_LINE;
+    cmd.DummyCycles = 0;
+    cmd.NbData = 1;
+    if (HAL_QSPI_Command(&hqspi, &cmd, HAL_QSPI_TIMEOUT_DEFAULT_VALUE) != HAL_OK) return HAL_ERROR;
+    if (HAL_QSPI_Receive(&hqspi, sr2, HAL_QSPI_TIMEOUT_DEFAULT_VALUE) != HAL_OK) return HAL_ERROR;
+    return HAL_OK;
+}
+
+static HAL_StatusTypeDef GD25QXX_WriteSR2(uint8_t sr2) {
+    QSPI_CommandTypeDef cmd = {0};
+    GD25QXX_WriteEnable();
+    cmd.Instruction = 0x31;
+    cmd.InstructionMode = QSPI_INSTRUCTION_1_LINE;
+    cmd.AddressMode = QSPI_ADDRESS_NONE;
+    cmd.DataMode = QSPI_DATA_1_LINE;
+    cmd.DummyCycles = 0;
+    cmd.NbData = 1;
+    if (HAL_QSPI_Command(&hqspi, &cmd, HAL_QSPI_TIMEOUT_DEFAULT_VALUE) != HAL_OK) return HAL_ERROR;
+    if (HAL_QSPI_Transmit(&hqspi, &sr2, HAL_QSPI_TIMEOUT_DEFAULT_VALUE) != HAL_OK) return HAL_ERROR;
+    GD25QXX_WaitBusy();
+    return HAL_OK;
+}
+
+static HAL_StatusTypeDef GD25QXX_EnableQuadMode_Winbond(void) {
+    uint8_t sr2 = 0;
+    if (GD25QXX_ReadSR2(&sr2) != HAL_OK) return HAL_ERROR;
+    if (sr2 & 0x02) return HAL_OK;
+    sr2 |= 0x02;
+    if (GD25QXX_WriteSR2(sr2) != HAL_OK) return HAL_ERROR;
+    return HAL_OK;
+}
+
 /**
  * @brief  启用XIP内存映射模式
  * @retval HAL状态
@@ -167,15 +204,16 @@ HAL_StatusTypeDef GD25QXX_EnableXIP(void) {
         printf("Flash ID: 0x%02X 0x%02X 0x%02X\r\n", flash_id[0], flash_id[1], flash_id[2]);
         
         if (flash_id[0] == 0xEF && flash_id[1] == 0x40 && flash_id[2] == 0x18) {
-            printf("Detected Winbond W25Q128 - using Winbond XIP config\r\n");
-            
-            /* Winbond W25Q128专用XIP配置 */
-            cmd.Instruction = 0x0B;  // Fast Read命令，Winbond推荐用于XIP
+            printf("Detected Winbond W25Q128 - using Winbond Quad XIP config\r\n");
+            if (GD25QXX_EnableQuadMode_Winbond() != HAL_OK) {
+                return HAL_ERROR;
+            }
+            cmd.Instruction = 0x6B;
             cmd.InstructionMode = QSPI_INSTRUCTION_1_LINE;
             cmd.AddressSize = QSPI_ADDRESS_24_BITS;
             cmd.AddressMode = QSPI_ADDRESS_1_LINE;
-            cmd.DataMode = QSPI_DATA_1_LINE;
-            cmd.DummyCycles = 8;  // Winbond W25Q128 Fast Read需要8个虚拟周期
+            cmd.DataMode = QSPI_DATA_4_LINES;
+            cmd.DummyCycles = 8;
             cmd.AlternateByteMode = QSPI_ALTERNATE_BYTES_NONE;
             cmd.DdrMode = QSPI_DDR_MODE_DISABLE;
             cmd.DdrHoldHalfCycle = QSPI_DDR_HHC_ANALOG_DELAY;
