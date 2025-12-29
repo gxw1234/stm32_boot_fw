@@ -58,7 +58,6 @@
 
 /* External variables --------------------------------------------------------*/
 extern PCD_HandleTypeDef hpcd_USB_OTG_HS;
-extern I2C_HandleTypeDef hi2c3_test_;
 /* USER CODE BEGIN EV */
 
 /* USER CODE END EV */
@@ -265,8 +264,6 @@ void EXTI15_10_IRQHandler(void)
   /* USER CODE END EXTI15_10_IRQn 1 */
 }
 
-/* HAL_GPIO_EXTI_Callback已移动到ads1220_task.c文件中 */
-
 /**
   * @brief This function handles I2C1 event interrupt.
   */
@@ -275,7 +272,6 @@ void I2C3_EV_IRQHandler(void)
   /* USER CODE BEGIN I2C1_EV_IRQn 0 */
 
   /* USER CODE END I2C1_EV_IRQn 0 */
-  HAL_I2C_EV_IRQHandler(&hi2c3_test_);
   /* USER CODE BEGIN I2C1_EV_IRQn 1 */
 
   /* USER CODE END I2C1_EV_IRQn 1 */
@@ -289,7 +285,6 @@ void I2C3_ER_IRQHandler(void)
   /* USER CODE BEGIN I2C1_ER_IRQn 0 */
 
   /* USER CODE END I2C1_ER_IRQn 0 */
-  HAL_I2C_ER_IRQHandler(&hi2c3_test_);
   /* USER CODE BEGIN I2C1_ER_IRQn 1 */
 
   /* USER CODE END I2C1_ER_IRQn 1 */

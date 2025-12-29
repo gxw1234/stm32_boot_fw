@@ -34,10 +34,6 @@ target_include_directories(stm32cubemx INTERFACE
 
 target_sources(stm32cubemx INTERFACE
     ../../Core/main.c
-    ../../Core/Src/tasks/lcd_task.c
-    ../../Core/Src/tasks/ads1220_task.c
-    ../../Core/Src/tasks/MP8865_task.c
-    ../../Core/Src/tasks/test_iic_send.c
     ../../Core/Src/tasks/usb_command_pc_to_st_task.c
     ../../Core/Src/init/uart_init.c
     ../../Core/Src/init/gpio_init.c

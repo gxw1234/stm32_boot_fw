@@ -33,7 +33,7 @@ def flash_hex():
     
     
     jlink_cmd = [
-         r"C:\Program Files\SEGGER\JLink_V798i\JLink.exe",  
+         r"D:\jlink\JLink_V878\JLink.exe",  
         "-device", "STM32H750IB", 
         "-if", "SWD",
         "-speed", "4000",

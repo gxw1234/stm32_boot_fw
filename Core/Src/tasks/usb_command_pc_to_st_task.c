@@ -94,14 +94,45 @@ void usb_command_pc_to_st_task(void *argument)
                                                 qspi_current_addr = QSPI_FIRMWARE_START_ADDR;
                                                 printf("Bootloader start write, reset QSPI address to 0x%08lX\n", qspi_current_addr);
                                                 
-                                                // 擦除应用程序区域 (从128KB开始，擦除足够的扇区)
-                                                printf("Erasing application Flash sectors...\n");
-                                                for (uint32_t sector_addr = QSPI_FIRMWARE_START_ADDR; 
-                                                     sector_addr < QSPI_FIRMWARE_START_ADDR + 0x100000; // 1MB区域
-                                                     sector_addr += 0x1000) { // 4KB扇区
-                                                    GD25QXX_EraseSector(sector_addr);
+                                                // 调试：打印接收到的数据包内容
+                                                printf("DEBUG: Received packet length: %d\n", usbData.Length);
+                                                printf("DEBUG: Packet data (first 20 bytes): ");
+                                                for (int i = 0; i < 20 && i < usbData.Length; i++) {
+                                                    printf("%02X ", usbData.Buf[i]);
                                                 }
-                                                printf("Flash erase completed\n");
+                                                printf("\n");
+                                                
+                                                // 检查是否包含固件大小数据
+                                                if (usbData.Length >= 16) { // 帧头4 + 协议头8 + 固件大小4
+                                                    uint32_t firmware_size = 0;
+                                                    memcpy(&firmware_size, usbData.Buf + 12, 4);
+                                                    printf("DEBUG: Firmware size from packet: %lu bytes\n", firmware_size);
+                                                    
+                                                    // 计算需要擦除的扇区数量（4KB对齐，向上取整）
+                                                    uint32_t sectors_needed = (firmware_size + 0xFFF) / 0x1000; // 向上取整到4KB
+                                                    uint32_t erase_size = sectors_needed * 0x1000;
+                                                    
+                                                    printf("Erasing %lu sectors (%lu bytes) for %lu byte firmware...\n", 
+                                                           sectors_needed, erase_size, firmware_size);
+                                                    
+                                                    // 只擦除需要的扇区数量
+                                                    for (uint32_t sector_addr = QSPI_FIRMWARE_START_ADDR; 
+                                                         sector_addr < QSPI_FIRMWARE_START_ADDR + erase_size; 
+                                                         sector_addr += 0x1000) { // 4KB扇区
+                                                        GD25QXX_EraseSector(sector_addr);
+                                                    }
+                                                    printf("Flash erase completed (%lu sectors)\n", sectors_needed);
+                                                } else {
+                                                    printf("ERROR: Packet too small, using default 1MB erase\n");
+                                                    // 回退到原来的1MB擦除
+                                                    printf("Erasing application Flash sectors...\n");
+                                                    for (uint32_t sector_addr = QSPI_FIRMWARE_START_ADDR; 
+                                                         sector_addr < QSPI_FIRMWARE_START_ADDR + 0x100000; // 1MB区域
+                                                         sector_addr += 0x1000) { // 4KB扇区
+                                                        GD25QXX_EraseSector(sector_addr);
+                                                    }
+                                                    printf("Flash erase completed\n");
+                                                }
                                                 break;
                                             case BOOTLOADER_WRITE_BYTES:
                                                 // 移除地址重置，保持累加写入

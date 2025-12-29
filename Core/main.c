@@ -31,10 +31,6 @@
 #include <stdio.h>
 #include "FreeRTOS.h"
 #include "task.h"
-// #include "tasks/lcd_task.h"
-// #include "tasks/ads1220_task.h"
-// #include "tasks/MP8865_task.h"
-// #include "tasks/test_iic_send.h"
 #include "init/uart_init.h"
 #include <stdarg.h>
 #include <stdlib.h>
@@ -68,8 +64,6 @@ extern void usb_command_pc_to_st_task(void *pvParameters);
 osThreadId defaultTaskHandle;
 osThreadId printTaskHandle;  
 TaskHandle_t lcdTaskHandle; 
-TaskHandle_t ads1220TaskHandle;  
-TaskHandle_t mp8865TaskHandle; 
 TaskHandle_t UsbCmdTaskHandle; 
 TaskHandle_t DebugTaskHandle; 
 /* USER CODE BEGIN PV */
